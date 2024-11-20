@@ -13,3 +13,4 @@ MyAlloc.o:
 clean:
 	rm MyAlloc.o
 	rm test
+	rm libMyAlloc.so
