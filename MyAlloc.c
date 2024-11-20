@@ -10,6 +10,58 @@
 static void **blocks;
 static size_t max_blocks;
 
+void insert_block(void *block){
+    size_t size, i, size_iter;
+    void *block_iter;
+    if(block == NULL){
+        return;
+    }
+    size = ((size_t *)block)[-1];
+    for(i = 0; i < max_blocks; i++){
+        block_iter = blocks[i];
+        if(block_iter == NULL){
+            break;
+        }
+        size_iter = ((size_t *)block_iter)[-1];
+        if(block_iter + size_iter + sizeof(size_t) == block){
+            // merge the block with a predecesor
+            size_iter += sizeof(size_t) + size;
+            ((size_t *)block_iter)[-1] = size_iter;
+            return;
+            if(block_iter + size_iter + sizeof(size_t) == blocks[i + 1]){
+                // also merge with the succesor if posible
+                block = block_iter;
+                size = size_iter;
+                block_iter = blocks[i + 1];
+                if(block_iter == NULL){
+                    return;
+                }
+                size_iter = ((size_t *)block_iter)[-1];
+                size_iter += sizeof(size_t) + size;
+                ((size_t *)block_iter)[-1] = size_iter;
+                memcpy(&blocks[i + 1], &blocks[i + 2], (max_blocks - i - 2) * sizeof(void*));
+            }
+        }
+        if(block + size + sizeof(size_t) == block_iter){
+            // merge with the block's succesor
+            size += size_iter + sizeof(size_t);
+            ((size_t *)block)[-1] = size;
+            blocks[i] = block;
+            return;
+        }
+        // if it can't be merged just add it to the array so that it's still in ascending order
+        if(blocks[max_blocks - 1] != NULL){
+            // resize block array to fit
+        }
+        if(block_iter < block && block < blocks[i + 1]){
+            memcpy(blocks[i + 2], blocks[i + 1], (max_blocks - i - 2) * sizeof(void *));
+            blocks[i + 1] = block;
+            return;
+        }
+    }
+    blocks[i] = block;
+}
+
 void print_blocks(){
     void *block;
     for(size_t i = 0; i < max_blocks; i++){
@@ -17,7 +69,7 @@ void print_blocks(){
         if(block == NULL){
             return;
         }
-        printf("Block: %p, of size: %ld, at index: %ld\n",block, ((size_t *)block)[-1], i);
+        printf("Block: %p, of size: %ld, at index: %ld, overhead bytes: %ld\n",block, ((size_t *)block)[-1], i, sizeof(size_t));
     }
 }
 
@@ -47,7 +99,7 @@ void *my_alloc(size_t size){
         if(block_size - size > sizeof(size_t)){
             // split block into 2 blocks, one of size bytes to be returned and one with the remaining bytes (- the one size_t overhead for length storage)
             ((size_t *)block)[-1] = size;
-            block_size -= size - sizeof(size_t);
+            block_size -= size + sizeof(size_t);
             block += size + sizeof(size_t);
             ((size_t *)block)[-1] = block_size;
             blocks[i] = block;
@@ -55,7 +107,7 @@ void *my_alloc(size_t size){
             // if the block is to small to be split remove it from the free blocks array
             memcpy(&blocks[i], blocks[i + 1], (max_blocks - i - 1) * sizeof(void *));
         }
-        printf("Returned block at: %p of size: %ld\n", ret, ((size_t *)ret)[-1]);
+        printf("Allocated block at: %p of size: %ld, overhead bytes: %ld\n", ret, ((size_t *)ret)[-1], sizeof(size_t));
         return ret;
     }
     // if there is no suitable free blocks alocate new ones;
@@ -79,13 +131,14 @@ void *my_alloc(size_t size){
         // if the block is to small to be split just set the size and return it
         ((size_t *)alloc)[0] = alloc_size - sizeof(size_t);
     }
-    printf("Returned block at: %p of size: %ld\n", ret, ((size_t *)ret)[-1]);
-    print_blocks();
+    printf("Allocated block at: %p of size: %ld, overhead bytes: %ld\n", ret, ((size_t *)ret)[-1], sizeof(size_t));
+    // print_blocks();
     return ret;
 }
 
 void my_free(void *block){
-
+    insert_block(block);
+    printf("Freed block at: %p of size: %ld, overhead bytes: %ld\n", block, ((size_t *)block)[-1], sizeof(size_t));
 }
 
 void *my_realloc(void *block, size_t size){
