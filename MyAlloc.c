@@ -6,7 +6,7 @@
 #include <sys/mman.h>
 
 #define PAGE_SIZE 4096
-// #define __DEBUG
+#define __DEBUG
 
 static void **blocks;
 static size_t max_blocks;
@@ -28,9 +28,9 @@ static void extend_blocks(){
     blocks = ptr;
     memset(blocks + new_size - PAGE_SIZE, 0, PAGE_SIZE);
     max_blocks = new_size / sizeof(size_t);
-#ifdef __DEBUG
+    #ifdef __DEBUG
     printf("Created new mapping for block storage at: %p of count: %ld\n", blocks, max_blocks);
-#endif
+    #endif
 }
 
 static void insert_block(void *block){
@@ -127,9 +127,9 @@ void *my_alloc(size_t size){
             // if the block is to small to be split remove it from the free blocks array
             memcpy(&blocks[i], blocks[i + 1], (max_blocks - i - 1) * sizeof(void *));
         }
-#ifdef __DEBUG
+    #ifdef __DEBUG
         printf("Allocated block at: %p of size: %ld, overhead bytes: %ld\n", ret, ((size_t *)ret)[-1], sizeof(size_t));
-#endif
+    #endif
         return ret;
     }
     // if there is no suitable free blocks alocate new ones;
@@ -139,9 +139,9 @@ void *my_alloc(size_t size){
         perror(NULL);
         exit(errno);
     }
-#ifdef __DEBUG
+    #ifdef __DEBUG
     printf("Created new mapping at: %p of size: %ld\n", alloc, alloc_size);
-#endif
+    #endif
     ret = alloc + sizeof(size_t);
 
     if(alloc_size - size > sizeof(size_t)){
@@ -155,24 +155,66 @@ void *my_alloc(size_t size){
         // if the block is to small to be split just set the size and return it
         ((size_t *)alloc)[0] = alloc_size - sizeof(size_t);
     }
-#ifdef __DEBUG
+    #ifdef __DEBUG
     printf("Allocated block at: %p of size: %ld, overhead bytes: %ld\n", ret, ((size_t *)ret)[-1], sizeof(size_t));
-#endif
+    #endif
     // print_blocks();
     return ret;
 }
 
 void my_free(void *block){
-#ifdef __DEBUG
+    #ifdef __DEBUG
     printf("Freed block at: %p of size: %ld, overhead bytes: %ld\n", block, ((size_t *)block)[-1], sizeof(size_t));
-#endif
+    #endif
     insert_block(block);
-#ifdef __DEBUG
+    #ifdef __DEBUG
     print_blocks();
-#endif
+    #endif
 }
 
 void *my_realloc(void *block, size_t size){
-
-    return NULL;
+    size_t i, block_size, old_size, total_size;
+    void *block_iter, *ret;
+    if(block == NULL){
+        return my_alloc(size);
+    }
+    old_size = ((size_t*)block)[-1];
+    for(i = 0; i < max_blocks; i++){
+        block_iter = blocks[i];
+        if(block_iter == NULL){
+            break;
+        }
+        block_size = ((size_t*)block_iter)[-1];
+        total_size = block_size + old_size + sizeof(size_t);
+        if(block + old_size + sizeof(size_t) == block_iter){
+            if(total_size > size){
+                ret = block;
+                if(total_size - size > sizeof(size_t)){
+                    // move the boundry between the 2 block
+                    ((size_t *)block)[-1] = size;
+                    block_size -= size - old_size;
+                    block_iter += size - old_size;
+                    ((size_t *)block_iter)[-1] = block_size;
+                    blocks[i] = block_iter;
+                }else{
+                    // if the boundry can't be moved merge into one block and return it;
+                    memcpy(&blocks[i], blocks[i + 1], (max_blocks - i - 1) * sizeof(void *));
+                    ((size_t *)block)[-1] = total_size;
+                }
+                #ifdef __DEBUG
+                printf("Extended block at: %p of size: %ld to size: %ld, overhead bytes: %ld\n", block, old_size, ((size_t *)ret)[-1], sizeof(size_t));
+                print_blocks();
+                #endif
+                return ret;
+            }
+        }
+    }
+    ret = my_alloc(size);
+    memcpy(ret, block, old_size);
+    my_free(block);
+    #ifdef __DEBUG
+    printf("Realocated block at: %p to: %p of size: %ld to size: %ld, overhead bytes: %ld\n", block, ret, old_size, ((size_t *)ret)[-1], sizeof(size_t));
+    print_blocks();
+    #endif
+    return ret;
 }
