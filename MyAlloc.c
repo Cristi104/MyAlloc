@@ -6,7 +6,7 @@
 #include <sys/mman.h>
 
 #define PAGE_SIZE 4096
-#define __DEBUG
+// #define __DEBUG
 
 static void **blocks;
 static size_t max_blocks;
@@ -85,7 +85,46 @@ static void insert_block(void *block){
     }
     blocks[i] = block;
 }
-
+static void unmap(){
+    size_t i, size, actual_size, page_offset, page_aligned_map_size, unmap_size, remainder, next_page;
+    void *block;
+    for(i = 0; i < max_blocks; i++){
+        block = blocks[i];
+        if(block == NULL){
+            break;
+        }
+        block -= sizeof(size_t);
+        size = *((size_t *)block);
+        actual_size = size + sizeof(size_t);
+        page_offset = (((size_t)block) % PAGE_SIZE);
+        next_page = PAGE_SIZE - page_offset;
+        if(next_page == PAGE_SIZE){
+            next_page = 0;
+        }
+        page_aligned_map_size = actual_size - next_page;
+        unmap_size = PAGE_SIZE * (page_aligned_map_size / PAGE_SIZE);
+        if(unmap_size != 0){
+            munmap(block + next_page, unmap_size);
+            #ifdef __DEBUG
+            printf("Unmapped page(s) at: %p of size: %ld\n", block + next_page , unmap_size);
+            #endif
+        } else {
+            continue;
+        }
+        if(next_page > 0){
+            *((size_t *)block) = next_page - sizeof(size_t);   
+        } else {
+            memcpy(&blocks[i], &blocks[i + 1], (max_blocks - i - 1) * sizeof(void *));
+        }
+        remainder = page_aligned_map_size - unmap_size;
+        if(remainder > 0){
+            block = block + next_page + unmap_size;
+            *((size_t *)block) = remainder - sizeof(size_t);
+            insert_block(block + sizeof(size_t));
+        }
+                
+    }
+}
 #ifdef __DEBUG
 static void print_blocks(){
     void *block;
@@ -125,7 +164,7 @@ void *my_alloc(size_t size){
             blocks[i] = block;
         }else{
             // if the block is to small to be split remove it from the free blocks array
-            memcpy(&blocks[i], blocks[i + 1], (max_blocks - i - 1) * sizeof(void *));
+            memcpy(&blocks[i], &blocks[i + 1], (max_blocks - i - 1) * sizeof(void *));
         }
     #ifdef __DEBUG
         printf("Allocated block at: %p of size: %ld, overhead bytes: %ld\n", ret, ((size_t *)ret)[-1], sizeof(size_t));
@@ -167,6 +206,7 @@ void my_free(void *block){
     printf("Freed block at: %p of size: %ld, overhead bytes: %ld\n", block, ((size_t *)block)[-1], sizeof(size_t));
     #endif
     insert_block(block);
+    unmap();
     #ifdef __DEBUG
     print_blocks();
     #endif
@@ -187,7 +227,7 @@ void *my_realloc(void *block, size_t size){
         block_size = ((size_t*)block_iter)[-1];
         total_size = block_size + old_size + sizeof(size_t);
         if(block + old_size + sizeof(size_t) == block_iter){
-            if(total_size > size){
+            if(total_size >= size){
                 ret = block;
                 if(total_size - size > sizeof(size_t)){
                     // move the boundry between the 2 block
