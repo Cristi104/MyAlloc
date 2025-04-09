@@ -6,7 +6,6 @@
 #include <sys/mman.h>
 
 #define PAGE_SIZE 4096
-// #define __DEBUG
 
 static void **blocks;
 static size_t max_blocks;
