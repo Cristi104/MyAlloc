@@ -1,7 +1,6 @@
 #include "MyAlloc.h"
 #include <assert.h>
 #include <stdio.h>
-// #include <stdtype.>
 
 int main(){
     char* ptr1, *ptr2;
